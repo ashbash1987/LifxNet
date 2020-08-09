@@ -107,8 +107,14 @@ namespace LifxNet
 				{
 					if (arg is UInt16)
 						payload.AddRange(BitConverter.GetBytes((UInt16)arg));
+					else if (arg is Int16)
+						payload.AddRange(BitConverter.GetBytes((Int16)arg));
 					else if (arg is UInt32)
 						payload.AddRange(BitConverter.GetBytes((UInt32)arg));
+					else if (arg is Int32)
+						payload.AddRange(BitConverter.GetBytes((Int32)arg));
+					else if (arg is float)
+						payload.AddRange(BitConverter.GetBytes((float)arg));
 					else if (arg is byte)
 						payload.Add((byte)arg);
 					else if (arg is byte[])

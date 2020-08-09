@@ -1,14 +1,42 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
 
 namespace LifxNet
 {
 	public partial class LifxClient : IDisposable
 	{
+		/// <summary>
+		/// Waveform enum
+		/// </summary>
+		public enum Waveform : byte
+		{
+			/// <summary>
+			/// Sawtooth waveform
+			/// </summary>
+			Sawtooth = 0,
+
+			/// <summary>
+			/// Sine curve waveform
+			/// </summary>
+			Sine = 1,
+
+			/// <summary>
+			/// Half-sine waveform, like a sawtooth and a sine curve mushed together
+			/// </summary>
+			HalfSine = 2,
+
+			/// <summary>
+			/// Triangle waveform, like a sawtooth but it reflects upon itself
+			/// </summary>
+			Triangle = 3,
+
+			/// <summary>
+			/// Pulse waveform
+			/// </summary>
+			Pulse = 4
+		}
+
 		private Dictionary<UInt32, Action<LifxResponse>> taskCompletions = new Dictionary<uint, Action<LifxResponse>>();
 
 		/// <summary>
@@ -150,11 +178,6 @@ namespace LifxNet
 				AcknowledgeRequired = true
 			};
 			UInt32 duration = (UInt32)transitionDuration.TotalMilliseconds;
-			var durationBytes = BitConverter.GetBytes(duration);
-			var h = BitConverter.GetBytes(hue);
-			var s = BitConverter.GetBytes(saturation);
-			var b = BitConverter.GetBytes(brightness);
-			var k = BitConverter.GetBytes(kelvin);
 
 			await BroadcastMessageAsync<AcknowledgementResponse>(bulb.HostName, header,
 				MessageType.LightSetColor, (byte)0x00, //reserved
@@ -163,34 +186,86 @@ namespace LifxNet
 			);
 		}
 
-		/*
-		public async Task SetBrightnessAsync(LightBulb bulb,
-			UInt16 brightness,
-			TimeSpan transitionDuration)
+		/// <summary>
+		/// Sets a waveform for a bulb, that can persist or be transient
+		/// </summary>
+		/// <param name="bulb">Light bulb</param>
+		/// <param name="transient">Transient color or persistent color</param>
+		/// <param name="color"></param>
+		/// <param name="kelvin">2700..9000</param>
+		/// <param name="waveformPeriod"></param>
+		/// <param name="cycles"></param>
+		/// <param name="skewRatio"></param>
+		/// <param name="waveform"></param>
+		/// <returns></returns>
+		public Task SetWaveformAsync(LightBulb bulb, bool transient, Color color, UInt16 kelvin, TimeSpan waveformPeriod, float cycles, Int16 skewRatio, Waveform waveform)
 		{
-			if (transitionDuration.TotalMilliseconds > UInt32.MaxValue ||
-				transitionDuration.Ticks < 0)
-				throw new ArgumentOutOfRangeException("transitionDuration");
+			if (bulb == null)
+				throw new ArgumentNullException(nameof(bulb));
+			var hsl = Utilities.RgbToHsl(color);
+			return SetWaveformAsync(bulb, transient, hsl[0], hsl[1], hsl[2], kelvin, waveformPeriod, cycles, skewRatio, waveform);
+		}
 
+		/// <summary>
+		/// Sets a waveform for a bulb, that can persist or be transient
+		/// </summary>
+		/// <param name="bulb">Light bulb</param>
+		/// <param name="transient">Transient color or persistent color</param>
+		/// <param name="hue">0..65535</param>
+		/// <param name="saturation">0..65535</param>
+		/// <param name="brightness">0..65535</param>
+		/// <param name="kelvin">2700..9000</param>
+		/// <param name="waveformPeriod"></param>
+		/// <param name="cycles"></param>
+		/// <param name="skewRatio"></param>
+		/// <param name="waveform"></param>
+		/// <returns></returns>
+		public async Task SetWaveformAsync(LightBulb bulb,
+			bool transient,
+			UInt16 hue,
+			UInt16 saturation,
+			UInt16 brightness,
+			UInt16 kelvin,
+			TimeSpan waveformPeriod,
+			float cycles,
+			Int16 skewRatio,
+			Waveform waveform)
+		{
+			if (bulb == null)
+				throw new ArgumentNullException(nameof(bulb));
+			if (waveformPeriod.TotalMilliseconds > UInt32.MaxValue ||
+				waveformPeriod.Ticks < 0)
+				throw new ArgumentOutOfRangeException("period");
+			if (kelvin < 2500 || kelvin > 9000)
+			{
+				throw new ArgumentOutOfRangeException("kelvin", "Kelvin must be between 2500 and 9000");
+			}
+
+				System.Diagnostics.Debug.WriteLine("Setting waveform to {0}", bulb.HostName);
 			FrameHeader header = new FrameHeader()
 			{
-				Identifier = (uint)randomizer.Next(),
+				Identifier = GetNextIdentifier(),
 				AcknowledgeRequired = true
 			};
-			UInt32 duration = (UInt32)transitionDuration.TotalMilliseconds;
-			var durationBytes = BitConverter.GetBytes(duration);
-			var b = BitConverter.GetBytes(brightness);
+			UInt32 period = (UInt32)waveformPeriod.TotalMilliseconds;
+			byte transientBytes = transient ? (byte)0x01 : (byte)0x00;
 
 			await BroadcastMessageAsync<AcknowledgementResponse>(bulb.HostName, header,
-				MessageType.SetLightBrightness, brightness, duration
+				MessageType.LightSetWaveform, (byte)0x00, //reserved
+					transientBytes, //transient (color persists)
+					hue, saturation, brightness, kelvin, //HSBK
+					period, //period
+					cycles, //cycles
+					skewRatio, //skew ratio
+					(byte)waveform //waveform
 			);
-		}*/
+		}
 
-			/// <summary>
-			/// Gets the current state of the bulb
-			/// </summary>
-			/// <param name="bulb"></param>
-			/// <returns></returns>
+		/// <summary>
+		/// Gets the current state of the bulb
+		/// </summary>
+		/// <param name="bulb"></param>
+		/// <returns></returns>
 		public Task<LightStateResponse> GetLightStateAsync(LightBulb bulb)
 		{
 			if (bulb == null)
